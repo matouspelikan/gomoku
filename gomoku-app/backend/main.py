@@ -7,6 +7,8 @@ import uuid
 from datetime import datetime
 
 from game import GomokuGame, GomokuHeuristic
+from torch_player import create_torch_ai, TorchGomokuAI
+from enum import Enum
 
 app = FastAPI(title="Gomoku Game API", version="1.0.0")
 
@@ -19,20 +21,45 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# AI Type enumeration
+class AIType(str, Enum):
+    HEURISTIC = "heuristic"
+    NEURAL_NETWORK = "neural_network"
+
 # Store active games in memory (in production, use Redis or database)
 games: Dict[str, GomokuGame] = {}
-ai_players: Dict[str, GomokuHeuristic] = {}
+ai_players: Dict[str, object] = {}  # Can be either GomokuHeuristic or TorchGomokuAI
+ai_types: Dict[str, AIType] = {}  # Track which AI type is used for each game
+
+# Initialize the PyTorch AI model once at startup
+torch_ai_model = None
+
+def get_torch_ai():
+    """Get or create the torch AI model"""
+    global torch_ai_model
+    if torch_ai_model is None:
+        try:
+            torch_ai_model = create_torch_ai()
+            print("PyTorch AI model loaded successfully")
+        except Exception as e:
+            print(f"Failed to load PyTorch AI model: {e}")
+            # Fallback to heuristic
+            torch_ai_model = GomokuHeuristic()
+            print("Using heuristic AI as fallback")
+    return torch_ai_model
 
 
 class CreateGameRequest(BaseModel):
     player_name: Optional[str] = "Player"
     ai_enabled: bool = True
+    ai_type: Optional[AIType] = AIType.HEURISTIC
 
 
 class CreateGameResponse(BaseModel):
     game_id: str
     player_name: str
     ai_enabled: bool
+    ai_type: Optional[AIType] = None
     board_size: int
 
 
@@ -84,12 +111,18 @@ async def create_game(request: CreateGameRequest):
     games[game_id] = GomokuGame()
     
     if request.ai_enabled:
-        ai_players[game_id] = GomokuHeuristic()
+        if request.ai_type == AIType.NEURAL_NETWORK:
+            ai_players[game_id] = get_torch_ai()
+            ai_types[game_id] = AIType.NEURAL_NETWORK
+        else:
+            ai_players[game_id] = GomokuHeuristic()
+            ai_types[game_id] = AIType.HEURISTIC
     
     return CreateGameResponse(
         game_id=game_id,
         player_name=request.player_name,
         ai_enabled=request.ai_enabled,
+        ai_type=request.ai_type if request.ai_enabled else None,
         board_size=GomokuGame.N
     )
 
@@ -156,13 +189,19 @@ async def get_hint(game_id: str):
     if game.winner is not None:
         raise HTTPException(status_code=400, detail="Game is already finished")
     
-    # Use AI to get suggested move
-    ai = GomokuHeuristic()
-    suggested_action = ai.get_move(game)
+    # Use PyTorch AI to get suggested move
+    torch_ai = get_torch_ai()
+    suggested_action = torch_ai.get_move(game)
     
-    # Calculate score for the suggested move
-    row, col = suggested_action // game.N, suggested_action % game.N
-    score = ai._evaluate_position(game.board, row, col, game.to_play)
+    # For PyTorch AI, we'll use a simple score based on action probability
+    # If it's a TorchGomokuAI, get the policy distribution
+    if hasattr(torch_ai, 'get_move_with_policy'):
+        _, policy = torch_ai.get_move_with_policy(game)
+        score = int(policy[suggested_action] * 1000)  # Scale for display
+    else:
+        # Fallback for heuristic AI
+        row, col = suggested_action // game.N, suggested_action % game.N
+        score = torch_ai._evaluate_position(game.board, row, col, game.to_play)
     
     return HintResponse(
         suggested_move=int(suggested_action),
@@ -241,10 +280,16 @@ async def websocket_endpoint(websocket: WebSocket, game_id: str):
             elif data["type"] == "get_hint":
                 game = games[game_id]
                 if game.winner is None:
-                    ai = GomokuHeuristic()
-                    suggested_action = ai.get_move(game)
-                    row, col = suggested_action // game.N, suggested_action % game.N
-                    score = ai._evaluate_position(game.board, row, col, game.to_play)
+                    torch_ai = get_torch_ai()
+                    suggested_action = torch_ai.get_move(game)
+                    
+                    # Get score based on AI type
+                    if hasattr(torch_ai, 'get_move_with_policy'):
+                        _, policy = torch_ai.get_move_with_policy(game)
+                        score = int(policy[suggested_action] * 1000)
+                    else:
+                        row, col = suggested_action // game.N, suggested_action % game.N
+                        score = torch_ai._evaluate_position(game.board, row, col, game.to_play)
                     
                     await websocket.send_json({
                         "type": "hint",

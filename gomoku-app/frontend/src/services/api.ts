@@ -1,20 +1,22 @@
 import axios from 'axios';
-import { GameState, GameConfig } from '../types/game';
+import { GameState, GameConfig, AIType } from '../types/game';
 
 const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
 
 export const api = {
   // Create a new game
-  createGame: async (playerName: string = 'Player', aiEnabled: boolean = true) => {
+  createGame: async (playerName: string = 'Player', aiEnabled: boolean = true, aiType: AIType = 'heuristic') => {
     const response = await axios.post(`${API_BASE_URL}/api/game/create`, {
       player_name: playerName,
       ai_enabled: aiEnabled,
+      ai_type: aiType,
     });
     // Map the snake_case response to camelCase
     return {
       gameId: response.data.game_id,
       playerName: response.data.player_name,
       aiEnabled: response.data.ai_enabled,
+      aiType: response.data.ai_type,
       boardSize: response.data.board_size,
     } as GameConfig;
   },

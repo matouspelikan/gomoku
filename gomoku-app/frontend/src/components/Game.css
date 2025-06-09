@@ -162,6 +162,26 @@
   transform: scale(1.2);
 }
 
+.ai-select {
+  width: 100%;
+  padding: 10px;
+  font-size: 1rem;
+  border: 2px solid #ddd;
+  border-radius: 5px;
+  background-color: white;
+  cursor: pointer;
+  transition: border-color 0.3s ease;
+}
+
+.ai-select:focus {
+  outline: none;
+  border-color: #2196f3;
+}
+
+.ai-select:hover {
+  border-color: #2196f3;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from {

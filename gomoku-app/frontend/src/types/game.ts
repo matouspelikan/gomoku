@@ -6,10 +6,13 @@ export interface GameState {
   valid_actions: number[];
 }
 
+export type AIType = 'heuristic' | 'neural_network';
+
 export interface GameConfig {
   gameId: string;
   playerName: string;
   aiEnabled: boolean;
+  aiType?: AIType;
   boardSize: number;
 }
 

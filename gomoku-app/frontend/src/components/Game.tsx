@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import GameBoard from './GameBoard';
-import { GameState, GameConfig, WebSocketMessage } from '../types/game';
+import { GameState, GameConfig, WebSocketMessage, AIType } from '../types/game';
 import { api, createWebSocketConnection } from '../services/api';
 import './Game.css';
 
@@ -14,6 +14,7 @@ const Game: React.FC = () => {
   const [lastMove, setLastMove] = useState<number | undefined>();
   const [playerName, setPlayerName] = useState('Player');
   const [aiEnabled, setAiEnabled] = useState(true);
+  const [aiType, setAiType] = useState<AIType>('heuristic');
   const [showNewGameForm, setShowNewGameForm] = useState(true);
 
   // Clean up WebSocket on unmount
@@ -26,12 +27,12 @@ const Game: React.FC = () => {
   }, [ws]);
 
   // Create a new game
-  const createNewGame = async (name: string, useAI: boolean) => {
+  const createNewGame = async (name: string, useAI: boolean, selectedAiType: AIType) => {
     setIsLoading(true);
     setError(null);
     
     try {
-      const config = await api.createGame(name, useAI);
+      const config = await api.createGame(name, useAI, selectedAiType);
       setGameConfig(config);
       setShowNewGameForm(false);
       
@@ -233,9 +234,24 @@ const Game: React.FC = () => {
             </label>
           </div>
           
+          {aiEnabled && (
+            <div className="form-group">
+              <label htmlFor="aiType">AI Type:</label>
+              <select
+                id="aiType"
+                value={aiType}
+                onChange={(e) => setAiType(e.target.value as AIType)}
+                className="ai-select"
+              >
+                <option value="heuristic">Heuristic AI (Fast)</option>
+                <option value="neural_network">Neural Network AI (Stronger)</option>
+              </select>
+            </div>
+          )}
+          
           <button
             className="btn btn-primary"
-            onClick={() => createNewGame(playerName, aiEnabled)}
+            onClick={() => createNewGame(playerName, aiEnabled, aiType)}
             disabled={isLoading}
           >
             {isLoading ? 'Creating...' : 'Start Game'}
@@ -251,7 +267,7 @@ const Game: React.FC = () => {
         <h1>Gomoku (Piškvorky) 🎮</h1>
         <div className="game-info">
           <span className="player-info">
-            {aiEnabled ? `${playerName} vs AI` : 'Two Players'}
+            {aiEnabled ? `${playerName} vs AI${gameConfig?.aiType === 'neural_network' ? ' (Neural Network)' : ' (Heuristic)'}` : 'Two Players'}
           </span>
           <span className="status">{getStatusMessage()}</span>
         </div>
